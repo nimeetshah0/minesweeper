@@ -13,3 +13,8 @@ export type CellState = {
   row: number;
   col: number;
 };
+
+export type SvgProps = {
+  width?: number;
+  height?: number;
+};

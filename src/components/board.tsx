@@ -7,11 +7,14 @@ interface BoardProps {
   row: number;
   col: number;
   mines: number;
+  onGameOver: () => void;
+  onFlagUpdated: (flags: number) => void;
 }
 
 export const Board = (props: BoardProps) => {
   const [mines, setMines] = useState<{ row: number; col: number }[]>([]);
   const [cellStates, setCellStates] = useState<CellState[]>([]);
+  const [isGameOver, setIsGameOver] = useState(false);
 
   const getCellState = (row: number, col: number): CellState | undefined => {
     return cellStates.find((state) => state.row === row && state.col === col);
@@ -25,6 +28,19 @@ export const Board = (props: BoardProps) => {
       const newCellStates = [...cellStates];
       newCellStates[index] = newState;
       setCellStates(newCellStates);
+
+      // Find total flagged cells
+      const totalFlagged = newCellStates.filter(
+        (state) => state.isFlagged,
+      ).length;
+      props.onFlagUpdated(totalFlagged);
+
+      // Check if the game is over. Game is over if all cells are revealed.
+      const allCellsRevealed = cellStates.every((cell) => cell.isRevealed);
+      if (allCellsRevealed) {
+        setIsGameOver(true);
+        props.onGameOver();
+      }
     }
   };
 
@@ -55,18 +71,48 @@ export const Board = (props: BoardProps) => {
     }
   };
 
-  const handleCellClick = (row: number, col: number, clickType: ClickType) => {
+  const handleCellClick = (
+    row: number,
+    col: number,
+    clickType: ClickType,
+    isAuto = false, // false if the user manually clicked the cell.
+  ) => {
+    if (isGameOver) {
+      return;
+    }
+
     const state = getCellState(row, col);
-    if (!state || state.isRevealed) {
+    if (!state) {
+      return;
+    }
+
+    if (state.isRevealed && clickType === Click.LEFT) {
       return;
     }
 
     if (clickType === Click.LEFT) {
+      if (state.hasMine && (!state.isFlagged || !isAuto)) {
+        state.isRevealed = true;
+        updateCellState(row, col, state);
+        setIsGameOver(true);
+        props.onGameOver();
+        return;
+      }
+
       revealCellsAround(row, col);
       return;
     }
 
-    if (clickType === Click.RIGHT) {
+    if (clickType === Click.RIGHT && state.isRevealed) {
+      // Click all adjacent cells.
+      const adjacentCells = getAdjacentCells(row, col);
+      for (const cell of adjacentCells) {
+        handleCellClick(cell.row, cell.col, Click.LEFT, true);
+      }
+      return;
+    }
+
+    if (clickType === Click.RIGHT && !state.isRevealed) {
       state.isFlagged = !state.isFlagged;
       updateCellState(row, col, state);
     }
@@ -104,36 +150,29 @@ export const Board = (props: BoardProps) => {
   return (
     <div
       style={{
+        maxWidth: `${props.col * 50}px`,
         display: "flex",
-        flex: 1,
-        alignItems: "center",
+        flexDirection: "row",
         justifyContent: "center",
+        alignItems: "center",
+        flexWrap: "wrap",
       }}
     >
-      <div
-        style={{
-          maxWidth: `${props.col * 30}px`,
-          display: "flex",
-          flexDirection: "row",
-          justifyContent: "center",
-          alignItems: "center",
-          flexWrap: "wrap",
-        }}
-      >
-        {Array.from({ length: props.row }, (_, colIndex) => (
-          <div key={colIndex} style={{ width: 30, height: 30 }}>
-            {Array.from({ length: props.col }, (_, rowIndex) => (
-              <Cell
-                key={`${rowIndex}-${colIndex}`}
-                state={cellStates.find(
-                  (cell) => cell.row === rowIndex && cell.col === colIndex,
-                )}
-                onClick={handleCellClick}
-              />
-            ))}
-          </div>
-        ))}
-      </div>
+      {Array.from({ length: props.row }, (_, colIndex) => (
+        <div key={colIndex} style={{ width: 50, height: 50 }}>
+          {Array.from({ length: props.col }, (_, rowIndex) => (
+            <Cell
+              key={`${rowIndex}-${colIndex}`}
+              maxRows={props.row}
+              maxCols={props.col}
+              state={cellStates.find(
+                (cell) => cell.row === rowIndex && cell.col === colIndex,
+              )}
+              onClick={handleCellClick}
+            />
+          ))}
+        </div>
+      ))}
     </div>
   );
 };
